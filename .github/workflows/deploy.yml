@@ -1,6 +1,9 @@
 name: RunTests
 
-on: [push, pull_request]
+on:
+    push:
+    pull_request:
+    workflow_dispatch:
 
 jobs:
     build:
@@ -30,8 +33,8 @@ jobs:
               if: github.ref == 'refs/heads/master'
               uses: crazy-max/ghaction-github-pages@v4
               with:
-                allow_empty_commit: false
-                target_branch: gh-pages
-                build_dir: build
+                  allow_empty_commit: false
+                  target_branch: gh-pages
+                  build_dir: build
               env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
