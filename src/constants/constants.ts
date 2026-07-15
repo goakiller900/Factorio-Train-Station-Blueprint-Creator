@@ -13,7 +13,7 @@ import type {
 
 export const mirrorXOffset = -3
 
-export const websiteUrl = "https://burnysc2.github.io/Factorio-Train-Station-Blueprint-Creator"
+export const websiteUrl = "https://goakiller900.github.io/Factorio-Train-Station-Blueprint-Creator"
 
 export type iStationType =
 	| "Loading Station"
@@ -39,11 +39,14 @@ export const inserterTypesHuman = {
 	"bulk-inserter": "Bulk Inserter",
 	"stack-inserter": "Stack Inserter",
 } as const
+
+// Since Factorio 2.0, filter inserters are no longer separate entities.
+// Filtering is configured directly on the selected inserter type.
 export const filterInserters = {
-	inserter: "filter-inserter",
-	"fast-inserter": "filter-inserter",
-	"bulk-inserter": "filter-inserter",
-	"stack-inserter": "filter-inserter",
+	inserter: "inserter",
+	"fast-inserter": "fast-inserter",
+	"bulk-inserter": "bulk-inserter",
+	"stack-inserter": "stack-inserter",
 } as const
 export const inserterStackSize = {
 	inserter: 3,
