@@ -1,6 +1,6 @@
 import pako from "pako"
 import { type defaultSettings, fluidStation, normalStation } from "../constants/constants"
-import type { iBlueprint, iBlueprintItem } from "../constants/interfaces"
+import type { iBlueprint, iBlueprintItem, iWireColor } from "../constants/interfaces"
 import { createFluidStation } from "./CreateFluidStation"
 import { createNormalStation } from "./CreateNormalStation"
 import { createStacker } from "./CreateStacker"
@@ -31,7 +31,52 @@ const decode = (blueprintString: string): iBlueprint => {
 // major << 48 | minor << 32 | patch << 16 | build.
 const FACTORIO_BLUEPRINT_VERSION = 562954248388608 // 2.1.0.0
 
+type iBlueprintWire = [number, number, number, number]
+
+const getCircuitConnectorId = (connectionPoint: "1" | "2", color: iWireColor): number => {
+	const pointOffset = connectionPoint === "1" ? 0 : 2
+	const colorOffset = color === "red" ? 1 : 2
+	return pointOffset + colorOffset
+}
+
+const serializeEntitiesAndWires = (items: iBlueprintItem[]): { entities: iBlueprintItem[]; wires: iBlueprintWire[] } => {
+	const wires: iBlueprintWire[] = []
+	const seenWires = new Set<string>()
+
+	const entities = items.map((item) => {
+		for (const connectionPoint of ["1", "2"] as const) {
+			const connectionGroup = item.connections?.[connectionPoint]
+			if (!connectionGroup) continue
+
+			for (const color of ["red", "green"] as const) {
+				const connections = connectionGroup[color] ?? []
+				for (const connection of connections) {
+					const targetConnectionPoint = connection.circuit_id === 2 ? "2" : "1"
+					const sourceConnectorId = getCircuitConnectorId(connectionPoint, color)
+					const targetConnectorId = getCircuitConnectorId(targetConnectionPoint, color)
+
+					const sourceKey = `${item.entity_number}:${sourceConnectorId}`
+					const targetKey = `${connection.entity_id}:${targetConnectorId}`
+					const wireKey = sourceKey < targetKey ? `${sourceKey}|${targetKey}` : `${targetKey}|${sourceKey}`
+
+					if (!seenWires.has(wireKey)) {
+						seenWires.add(wireKey)
+						wires.push([item.entity_number, sourceConnectorId, connection.entity_id, targetConnectorId])
+					}
+				}
+			}
+		}
+
+		const serializedItem = { ...item }
+		delete serializedItem.connections
+		return serializedItem
+	})
+
+	return { entities, wires }
+}
+
 const encode = (items: iBlueprintItem[]): string => {
+	const { entities, wires } = serializeEntitiesAndWires(items)
 	const blueprint = {
 		blueprint: {
 			icons: [
@@ -43,7 +88,8 @@ const encode = (items: iBlueprintItem[]): string => {
 					index: 1,
 				},
 			],
-			entities: items,
+			entities,
+			...(wires.length > 0 ? { wires } : {}),
 			item: "blueprint",
 			version: FACTORIO_BLUEPRINT_VERSION,
 			label: "Blueprint",
