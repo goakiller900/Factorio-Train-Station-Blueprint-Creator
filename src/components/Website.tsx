@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { Tooltip } from "react-tooltip"
 import { createBlueprint, createBlueprintString } from "../BlueprintCreation/CreateBlueprint"
 import { defaultSettings, fluidStation, normalStation, stationTypes, websiteUrl } from "../constants/constants"
+import { normalizeFactorio21InserterType, normalizeFactorio21ItemName } from "../constants/factorio21"
 import {
 	checkForHintsBlueprintSettings,
 	decodeSettings,
@@ -23,6 +24,10 @@ import WarningMessage from "./WarningMessage"
 const cloneDeep = require("clone-deep")
 const isEqual = require("lodash.isequal")
 const pick = require("lodash.pick")
+
+// The original autocomplete data predates Factorio 2.x. Normalize renamed IDs and remove
+// duplicates so old names such as effectivity-module no longer get suggested to users.
+const factorio21ItemIds = Array.from(new Set(itemlist.map((itemInfo) => normalizeFactorio21ItemName(itemInfo.id)))).sort()
 
 export default function Website(): JSX.Element {
 	const [userSettings, setUserSettings] = useState(cloneDeep(defaultSettings))
@@ -49,7 +54,15 @@ export default function Website(): JSX.Element {
 		if (settingsFromUrl) {
 			let decodedSettings
 			try {
-				decodedSettings = decodeSettings(settingsFromUrl)
+				const decoded = decodeSettings(settingsFromUrl)
+				decodedSettings = {
+					...decoded,
+					inserterType: normalizeFactorio21InserterType(decoded.inserterType),
+					filterFields: (decoded.filterFields ?? defaultSettings.filterFields).map(normalizeFactorio21ItemName),
+					chestRequestItemsType: (decoded.chestRequestItemsType ?? defaultSettings.chestRequestItemsType).map(
+						normalizeFactorio21ItemName,
+					),
+				}
 			} catch {
 				console.log("Could not decode settings from url")
 				return
@@ -117,11 +130,10 @@ export default function Website(): JSX.Element {
 	}
 
 	// Creates the datalist item names to make it easier for autocomplete
-	// Source: https://github.com/kevinta893/factorio-recipes-json recipes.json
 	const itemdatalist = (
 		<datalist id={"itemlist"}>
-			{itemlist.map((itemInfo) => {
-				return <option key={itemInfo.id} value={itemInfo.id} />
+			{factorio21ItemIds.map((itemId) => {
+				return <option key={itemId} value={itemId} />
 			})}
 		</datalist>
 	)
