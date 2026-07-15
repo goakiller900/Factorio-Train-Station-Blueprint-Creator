@@ -28,10 +28,11 @@ const decode = (blueprintString: string): iBlueprint => {
 }
 
 // Factorio stores blueprint versions as a packed 64-bit integer:
-// major << 48 | minor << 32 | patch << 16 | build.
+// main << 48 | major << 32 | minor << 16 | developer.
 const FACTORIO_BLUEPRINT_VERSION = 562954248388608 // 2.1.0.0
 
 type iBlueprintWire = [number, number, number, number]
+type iSerializedBlueprintItem = Record<string, unknown>
 
 const getCircuitConnectorId = (connectionPoint: "1" | "2", color: iWireColor): number => {
 	const pointOffset = connectionPoint === "1" ? 0 : 2
@@ -39,9 +40,46 @@ const getCircuitConnectorId = (connectionPoint: "1" | "2", color: iWireColor): n
 	return pointOffset + colorOffset
 }
 
-const serializeEntitiesAndWires = (items: iBlueprintItem[]): { entities: iBlueprintItem[]; wires: iBlueprintWire[] } => {
+const serializeControlBehavior = (item: iBlueprintItem): Record<string, unknown> | undefined => {
+	if (!item.control_behavior) return undefined
+
+	const controlBehavior: Record<string, unknown> = { ...item.control_behavior }
+
+	// Factorio 2.x renamed the enable/disable flag while keeping the circuit condition itself.
+	if (item.control_behavior.circuit_enable_disable !== undefined) {
+		controlBehavior.circuit_enabled = item.control_behavior.circuit_enable_disable
+		delete controlBehavior.circuit_enable_disable
+	}
+
+	// Factorio 2.x decider combinators use condition and output arrays.
+	const deciderConditions = item.control_behavior.decider_conditions
+	if (deciderConditions) {
+		controlBehavior.decider_conditions = {
+			conditions: [
+				{
+					first_signal: deciderConditions.first_signal,
+					constant: deciderConditions.constant,
+					comparator: deciderConditions.comparator,
+				},
+			],
+			outputs: [
+				{
+					signal: deciderConditions.output_signal,
+					copy_count_from_input: deciderConditions.copy_count_from_input,
+				},
+			],
+		}
+	}
+
+	return controlBehavior
+}
+
+const serializeEntitiesAndWires = (
+	items: iBlueprintItem[],
+): { entities: iSerializedBlueprintItem[]; wires: iBlueprintWire[] } => {
 	const wires: iBlueprintWire[] = []
 	const seenWires = new Set<string>()
+	const usesLegacyRailGeometry = items.some((item) => item.name === "curved-rail")
 
 	const entities = items.map((item) => {
 		for (const connectionPoint of ["1", "2"] as const) {
@@ -67,8 +105,53 @@ const serializeEntitiesAndWires = (items: iBlueprintItem[]): { entities: iBluepr
 			}
 		}
 
-		const serializedItem = { ...item }
+		const serializedItem: iSerializedBlueprintItem = { ...item }
 		delete serializedItem.connections
+
+		// Pre-2.0 blueprints used eight direction values. Factorio 2.x uses sixteen,
+		// so all generated directions need to be doubled during serialization.
+		if (item.direction !== undefined) {
+			serializedItem.direction = item.direction * 2
+		}
+
+		// Existing stacker templates use the old rail geometry. Preserve those layouts
+		// with the legacy rail prototypes until the stacker templates are rebuilt.
+		if (usesLegacyRailGeometry) {
+			if (item.name === "straight-rail") serializedItem.name = "legacy-straight-rail"
+			if (item.name === "curved-rail") serializedItem.name = "legacy-curved-rail"
+		}
+
+		// Filter inserters were folded into the normal inserter prototypes in Factorio 2.x.
+		// Explicitly enable filtering when the generated inserter contains filter slots.
+		if (item.filters && item.filters.length > 0) {
+			serializedItem.use_filters = true
+		}
+
+		// Logistic request slots became logistic sections in Factorio 2.x.
+		if (item.request_filters !== undefined || item.request_from_buffers !== undefined) {
+			const requestFilters: Record<string, unknown> = {}
+			if (item.request_filters && item.request_filters.length > 0) {
+				requestFilters.sections = [
+					{
+						index: 0,
+						filters: item.request_filters.map((filter) => ({
+							index: filter.index,
+							name: filter.name,
+							count: filter.count,
+						})),
+					},
+				]
+			}
+			if (item.request_from_buffers !== undefined) {
+				requestFilters.request_from_buffers = item.request_from_buffers
+			}
+			serializedItem.request_filters = requestFilters
+			delete serializedItem.request_from_buffers
+		}
+
+		const controlBehavior = serializeControlBehavior(item)
+		if (controlBehavior) serializedItem.control_behavior = controlBehavior
+
 		return serializedItem
 	})
 
