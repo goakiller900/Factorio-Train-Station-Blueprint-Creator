@@ -31,7 +31,8 @@ describe("Factorio 2.1 blueprint serialization", () => {
 
 		const inserter = result.blueprint.entities.find((entity) => entity.name === "fast-inserter")
 		expect(inserter).toBeDefined()
-		expect(inserter?.direction).toBe(4)
+		// The first default inserter faces LEFT internally (6), which becomes 12 in Factorio 2.x.
+		expect(inserter?.direction).toBe(12)
 	})
 
 	it("serializes circuit connections as top-level wires instead of per-entity connections", () => {
@@ -68,7 +69,13 @@ describe("Factorio 2.1 blueprint serialization", () => {
 			chestRequestItemsAmount: ["100", ...Array(11).fill("")],
 		})
 
-		const requesterChest = result.blueprint.entities.find((entity) => entity.name === "requester-chest")
+		const requesterChest = result.blueprint.entities.find(
+			(entity) =>
+				entity.name === "requester-chest" &&
+				entity.request_filters?.sections?.[0]?.filters?.some(
+					(filter: Record<string, any>) => filter.name === "iron-plate",
+				),
+		)
 		expect(requesterChest).toBeDefined()
 		expect(Array.isArray(requesterChest?.request_filters)).toBe(false)
 		expect(requesterChest?.request_filters?.sections?.[0]?.filters?.[0]).toMatchObject({
