@@ -4,7 +4,10 @@ import TOOLTIPS from "../../constants/tooltips"
 import { CLASSES } from "../../css/classes"
 
 export default function InserterSettings(props: iSectionsProps): JSX.Element {
-	// All inserter types
+	// Keep generated stations compatible with base Factorio 2.1. Old shared settings that use
+	// stack-inserter are migrated to bulk-inserter when they are loaded.
+	const supportedInserterTypes = inserterTypes.filter((inserterType) => inserterType !== "stack-inserter")
+
 	const inserterSelect = (
 		<select
 			id={"inserterType"}
@@ -17,7 +20,7 @@ export default function InserterSettings(props: iSectionsProps): JSX.Element {
 				})
 			}}
 		>
-			{inserterTypes.map((inserterType) => {
+			{supportedInserterTypes.map((inserterType) => {
 				return (
 					<option className={CLASSES.optionElement} key={inserterType} value={inserterType}>
 						{inserterTypesHuman[inserterType]}
