@@ -60,6 +60,22 @@ describe("Factorio 2.1 blueprint serialization", () => {
 		expect(filteredInserter?.filters?.[0]?.name).toBe("iron-plate")
 	})
 
+	it("normalizes legacy inserter and item names for base Factorio 2.1", () => {
+		const result = generate({
+			...defaultSettings,
+			inserterType: "stack-inserter",
+			enableFilterInserters: true,
+			filterFields: ["effectivity-module", "", "", "", ""],
+		})
+
+		expect(result.blueprint.entities.some((entity) => entity.name === "stack-inserter")).toBe(false)
+		const inserter = result.blueprint.entities.find(
+			(entity) => entity.name === "bulk-inserter" && entity.use_filters === true,
+		)
+		expect(inserter).toBeDefined()
+		expect(inserter?.filters?.[0]?.name).toBe("efficiency-module")
+	})
+
 	it("serializes requester chest requests using Factorio 2.x logistic sections", () => {
 		const result = generate({
 			...defaultSettings,
@@ -78,6 +94,7 @@ describe("Factorio 2.1 blueprint serialization", () => {
 		)
 		expect(requesterChest).toBeDefined()
 		expect(Array.isArray(requesterChest?.request_filters)).toBe(false)
+		expect(requesterChest?.request_filters?.sections?.[0]?.index).toBe(1)
 		expect(requesterChest?.request_filters?.sections?.[0]?.filters?.[0]).toMatchObject({
 			index: 1,
 			name: "iron-plate",
