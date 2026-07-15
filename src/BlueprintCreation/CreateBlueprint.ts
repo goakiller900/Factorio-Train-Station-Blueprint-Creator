@@ -1,5 +1,6 @@
 import pako from "pako"
 import { type defaultSettings, fluidStation, normalStation } from "../constants/constants"
+import { normalizeFactorio21EntityName, normalizeFactorio21ItemName } from "../constants/factorio21"
 import type { iBlueprint, iBlueprintItem, iWireColor } from "../constants/interfaces"
 import { createFluidStation } from "./CreateFluidStation"
 import { createNormalStation } from "./CreateNormalStation"
@@ -108,6 +109,9 @@ const serializeEntitiesAndWires = (
 		const serializedItem: iSerializedBlueprintItem = { ...item }
 		delete serializedItem.connections
 
+		// Normalize entity IDs from old shared settings before writing the 2.1 blueprint.
+		serializedItem.name = normalizeFactorio21EntityName(item.name)
+
 		// Pre-2.0 blueprints used eight direction values. Factorio 2.x uses sixteen,
 		// so all generated directions need to be doubled during serialization.
 		if (item.direction !== undefined) {
@@ -122,21 +126,26 @@ const serializeEntitiesAndWires = (
 		}
 
 		// Filter inserters were folded into the normal inserter prototypes in Factorio 2.x.
-		// Explicitly enable filtering when the generated inserter contains filter slots.
+		// Explicitly enable filtering and normalize legacy item names in the filter slots.
 		if (item.filters && item.filters.length > 0) {
+			serializedItem.filters = item.filters.map((filter) => ({
+				...filter,
+				name: normalizeFactorio21ItemName(filter.name),
+			}))
 			serializedItem.use_filters = true
 		}
 
-		// Logistic request slots became logistic sections in Factorio 2.x.
+		// Logistic request slots became logistic sections in Factorio 2.x. Section indexes
+		// are one-based; index 0 causes an "Index out of bounds: 0" import error in Factorio.
 		if (item.request_filters !== undefined || item.request_from_buffers !== undefined) {
 			const requestFilters: Record<string, unknown> = {}
 			if (item.request_filters && item.request_filters.length > 0) {
 				requestFilters.sections = [
 					{
-						index: 0,
+						index: 1,
 						filters: item.request_filters.map((filter) => ({
 							index: filter.index,
-							name: filter.name,
+							name: normalizeFactorio21ItemName(filter.name),
 							count: filter.count,
 						})),
 					},
