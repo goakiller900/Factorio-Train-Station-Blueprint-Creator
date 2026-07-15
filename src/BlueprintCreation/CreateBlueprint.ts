@@ -27,6 +27,10 @@ const decode = (blueprintString: string): iBlueprint => {
 	)
 }
 
+// Factorio stores blueprint versions as a packed 64-bit integer:
+// major << 48 | minor << 32 | patch << 16 | build.
+const FACTORIO_BLUEPRINT_VERSION = 562954248388608 // 2.1.0.0
+
 const encode = (items: iBlueprintItem[]): string => {
 	const blueprint = {
 		blueprint: {
@@ -41,7 +45,7 @@ const encode = (items: iBlueprintItem[]): string => {
 			],
 			entities: items,
 			item: "blueprint",
-			version: "0",
+			version: FACTORIO_BLUEPRINT_VERSION,
 			label: "Blueprint",
 		},
 	}
