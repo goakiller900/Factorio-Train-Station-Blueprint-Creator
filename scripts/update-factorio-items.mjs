@@ -1,13 +1,12 @@
 import { access, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
-const wikiApiUrl =
-	"https://wiki.factorio.com/api.php?action=parse&page=Data.raw&prop=wikitext&format=json&formatversion=2"
+const wikiApiUrl = "https://wiki.factorio.com/api.php?action=parse&page=Data.raw&prop=text&format=json&formatversion=2"
 const outputPath = fileURLToPath(new URL("../src/constants/itemlist.json", import.meta.url))
 
-// These are the data.raw prototype types that derive from ItemPrototype and therefore represent
-// inventory items that can be used by inserter filters or logistic requests.
-const itemPrototypeTypes = new Set([
+// These data.raw prototype types derive from ItemPrototype and represent inventory items that
+// can be selected for inserter filters and logistic requests.
+const itemPrototypeTypes = [
 	"ammo",
 	"armor",
 	"blueprint",
@@ -27,7 +26,7 @@ const itemPrototypeTypes = new Set([
 	"spidertron-remote",
 	"tool",
 	"upgrade-item",
-])
+]
 
 const fetchJson = async (url) => {
 	const response = await fetch(url, {
@@ -43,33 +42,46 @@ const fetchJson = async (url) => {
 	return response.json()
 }
 
-const stripWikiMarkup = (value) => {
+const stripHtml = (value) => {
 	return value
-		.replace(/<!--.*?-->/g, "")
-		.replace(/\[\[(?:[^\]|]+\|)?([^\]]+)\]\]/g, "$1")
 		.replace(/<[^>]+>/g, "")
+		.replace(/&nbsp;/g, " ")
+		.replace(/&amp;/g, "&")
+		.replace(/&#39;|&apos;/g, "'")
+		.replace(/&quot;/g, '"')
 		.trim()
 }
 
-const extractItemNames = (wikitext) => {
-	const itemNames = new Set()
-	let currentPrototypeType = ""
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-	for (const rawLine of wikitext.split(/\r?\n/)) {
-		const line = rawLine.trim()
-		const headingMatch = line.match(/^==\s*(.*?)\s*==$/)
-		if (headingMatch) {
-			currentPrototypeType = stripWikiMarkup(headingMatch[1])
+const findPrototypeSection = (html, prototypeType) => {
+	const escapedType = escapeRegExp(prototypeType)
+	const h2Match = new RegExp(`<h2\\b[^>]*\\bid=["']${escapedType}["'][^>]*>`, "i").exec(html)
+	const spanMatch = new RegExp(`<span\\b[^>]*\\bid=["']${escapedType}["'][^>]*>`, "i").exec(html)
+	const headingMatch = h2Match ?? spanMatch
+	if (!headingMatch) return ""
+
+	const sectionStart = h2Match ? h2Match.index : html.lastIndexOf("<h2", headingMatch.index)
+	if (sectionStart < 0) return ""
+
+	const nextSectionStart = html.indexOf("<h2", sectionStart + 3)
+	return html.slice(sectionStart, nextSectionStart === -1 ? html.length : nextSectionStart)
+}
+
+const extractItemNames = (html) => {
+	const itemNames = new Set()
+
+	for (const prototypeType of itemPrototypeTypes) {
+		const section = findPrototypeSection(html, prototypeType)
+		if (!section) {
+			console.warn(`Could not find data.raw section '${prototypeType}'.`)
 			continue
 		}
 
-		if (!itemPrototypeTypes.has(currentPrototypeType)) continue
-
-		const itemMatch = line.match(/^\*\s*(.+?)\s*$/)
-		if (!itemMatch) continue
-
-		const itemName = stripWikiMarkup(itemMatch[1])
-		if (/^[a-z0-9][a-z0-9-]*$/.test(itemName)) itemNames.add(itemName)
+		for (const match of section.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
+			const itemName = stripHtml(match[1])
+			if (/^[a-z0-9][a-z0-9-]*$/.test(itemName)) itemNames.add(itemName)
+		}
 	}
 
 	return [...itemNames].sort((a, b) => a.localeCompare(b))
@@ -78,14 +90,11 @@ const extractItemNames = (wikitext) => {
 const updateItemList = async () => {
 	console.log(`Updating Factorio item autocomplete from ${wikiApiUrl}`)
 	const apiResponse = await fetchJson(wikiApiUrl)
-	const wikitext =
-		typeof apiResponse?.parse?.wikitext === "string"
-			? apiResponse.parse.wikitext
-			: apiResponse?.parse?.wikitext?.["*"]
+	const html = typeof apiResponse?.parse?.text === "string" ? apiResponse.parse.text : apiResponse?.parse?.text?.["*"]
 
-	if (!wikitext) throw new Error("The Factorio wiki API did not return Data.raw wikitext.")
+	if (!html) throw new Error("The Factorio wiki API did not return rendered Data.raw HTML.")
 
-	const itemNames = extractItemNames(wikitext)
+	const itemNames = extractItemNames(html)
 	if (itemNames.length < 100) {
 		throw new Error(`Only found ${itemNames.length} item prototypes; refusing to replace the fallback list.`)
 	}
