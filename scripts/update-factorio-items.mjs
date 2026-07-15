@@ -1,11 +1,35 @@
 import { access, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
-const wikiUrl = "https://wiki.factorio.com/Data.raw"
-const fallbackDataRawUrl = "https://gist.githubusercontent.com/Bilka2/6b8a6a9e4a4ec779573ad703d03c1ae7/raw"
+const wikiApiUrl =
+	"https://wiki.factorio.com/api.php?action=parse&page=Data.raw&prop=wikitext&format=json&formatversion=2"
 const outputPath = fileURLToPath(new URL("../src/constants/itemlist.json", import.meta.url))
 
-const fetchText = async (url) => {
+// These are the data.raw prototype types that derive from ItemPrototype and therefore represent
+// inventory items that can be used by inserter filters or logistic requests.
+const itemPrototypeTypes = new Set([
+	"ammo",
+	"armor",
+	"blueprint",
+	"blueprint-book",
+	"capsule",
+	"copy-paste-tool",
+	"deconstruction-item",
+	"gun",
+	"item",
+	"item-with-entity-data",
+	"module",
+	"rail-planner",
+	"remote-controller",
+	"repair-tool",
+	"selection-tool",
+	"space-platform-starter-pack",
+	"spidertron-remote",
+	"tool",
+	"upgrade-item",
+])
+
+const fetchJson = async (url) => {
 	const response = await fetch(url, {
 		headers: {
 			"User-Agent": "Factorio-Train-Station-Blueprint-Creator item-list updater",
@@ -16,49 +40,52 @@ const fetchText = async (url) => {
 		throw new Error(`Request failed for ${url}: ${response.status} ${response.statusText}`)
 	}
 
-	return response.text()
+	return response.json()
 }
 
-const findDataRawUrl = async () => {
-	try {
-		const wikiHtml = await fetchText(wikiUrl)
-		const gistMatch = wikiHtml.match(/https:\/\/gist\.githubusercontent\.com\/[^\"'<>&\s]+\/raw(?:\/[^\"'<>&\s]*)?/)
-		return gistMatch?.[0] ?? fallbackDataRawUrl
-	} catch (error) {
-		console.warn(`Could not read the Factorio wiki data.raw page: ${error.message}`)
-		return fallbackDataRawUrl
-	}
+const stripWikiMarkup = (value) => {
+	return value
+		.replace(/<!--.*?-->/g, "")
+		.replace(/\[\[(?:[^\]|]+\|)?([^\]]+)\]\]/g, "$1")
+		.replace(/<[^>]+>/g, "")
+		.trim()
 }
 
-const extractItemNames = (dataRaw) => {
+const extractItemNames = (wikitext) => {
 	const itemNames = new Set()
+	let currentPrototypeType = ""
 
-	for (const prototypeGroup of Object.values(dataRaw)) {
-		if (!prototypeGroup || typeof prototypeGroup !== "object" || Array.isArray(prototypeGroup)) continue
-
-		for (const [prototypeName, prototype] of Object.entries(prototypeGroup)) {
-			if (!prototype || typeof prototype !== "object" || Array.isArray(prototype)) continue
-
-			// All ItemPrototype-derived prototypes have stack_size. Using the prototype data
-			// instead of a hard-coded type list also picks up specialized item prototype types.
-			if (!("stack_size" in prototype)) continue
-
-			const itemName = typeof prototype.name === "string" ? prototype.name : prototypeName
-			if (itemName) itemNames.add(itemName)
+	for (const rawLine of wikitext.split(/\r?\n/)) {
+		const line = rawLine.trim()
+		const headingMatch = line.match(/^==\s*(.*?)\s*==$/)
+		if (headingMatch) {
+			currentPrototypeType = stripWikiMarkup(headingMatch[1])
+			continue
 		}
+
+		if (!itemPrototypeTypes.has(currentPrototypeType)) continue
+
+		const itemMatch = line.match(/^\*\s*(.+?)\s*$/)
+		if (!itemMatch) continue
+
+		const itemName = stripWikiMarkup(itemMatch[1])
+		if (/^[a-z0-9][a-z0-9-]*$/.test(itemName)) itemNames.add(itemName)
 	}
 
 	return [...itemNames].sort((a, b) => a.localeCompare(b))
 }
 
 const updateItemList = async () => {
-	const dataRawUrl = await findDataRawUrl()
-	console.log(`Updating Factorio item autocomplete from ${dataRawUrl}`)
+	console.log(`Updating Factorio item autocomplete from ${wikiApiUrl}`)
+	const apiResponse = await fetchJson(wikiApiUrl)
+	const wikitext =
+		typeof apiResponse?.parse?.wikitext === "string"
+			? apiResponse.parse.wikitext
+			: apiResponse?.parse?.wikitext?.["*"]
 
-	const serializedDataRaw = await fetchText(dataRawUrl)
-	const dataRaw = JSON.parse(serializedDataRaw)
-	const itemNames = extractItemNames(dataRaw)
+	if (!wikitext) throw new Error("The Factorio wiki API did not return Data.raw wikitext.")
 
+	const itemNames = extractItemNames(wikitext)
 	if (itemNames.length < 100) {
 		throw new Error(`Only found ${itemNames.length} item prototypes; refusing to replace the fallback list.`)
 	}
