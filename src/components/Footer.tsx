@@ -7,7 +7,7 @@ export default function Footer(): JSX.Element {
 				className={CLASSES.footerElements}
 				target="_blank"
 				rel="noreferrer noopener"
-				href="https://github.com/BurnySc2/Factorio-Train-Station-Blueprint-Creator"
+				href="https://github.com/goakiller900/Factorio-Train-Station-Blueprint-Creator"
 			>
 				Contribute
 			</a>
@@ -15,7 +15,7 @@ export default function Footer(): JSX.Element {
 				className={CLASSES.footerElements}
 				target="_blank"
 				rel="noreferrer noopener"
-				href="https://github.com/BurnySc2/Factorio-Train-Station-Blueprint-Creator/issues/new"
+				href="https://github.com/goakiller900/Factorio-Train-Station-Blueprint-Creator/issues/new"
 			>
 				Suggestions / Report Bugs
 			</a>
@@ -23,9 +23,9 @@ export default function Footer(): JSX.Element {
 				className={CLASSES.footerElements}
 				target="_blank"
 				rel="noreferrer noopener"
-				href="https://www.reddit.com/message/compose/?to=BurnySc2"
+				href="https://github.com/BurnySc2/Factorio-Train-Station-Blueprint-Creator"
 			>
-				Contact (Reddit)
+				Original project by BurnySc2
 			</a>
 		</div>
 	)
